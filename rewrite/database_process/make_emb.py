@@ -1,16 +1,14 @@
 import pickle
 import gzip, re
-import tqdm, json, random
+import tqdm
 import pandas as pd
 import torch
 import sqlite3, os
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import euclidean_distances
 import argparse
 import logging
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 uuid_pattern = re.compile(
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
@@ -22,10 +20,10 @@ def filter_column(table, col, exclude_num, num_shold=6000):
     if len(cols) > num_shold and exclude_num:
         try:
             table[col].dropna().astype(float)
-            return []  # 跳过当前列，因为它满足排除条件
+            return []  # Skip current column as it meets exclusion criteria
         except ValueError:
             pass
-    # 排除具有UUID格式的数据
+    # Exclude data with UUID format
     col_vals = [
         item for item in cols if isinstance(item, str)
         and not uuid_pattern.match(item) and len(item) < 100
@@ -33,7 +31,28 @@ def filter_column(table, col, exclude_num, num_shold=6000):
     return col_vals
 
 
-def make_emb(db, DB_dir, DB_emb,col_values,bert_model,exclude_int=True):
+def make_emb(db, DB_dir, DB_emb, col_values, bert_model, exclude_int=True):
+    """
+    Generate embeddings for string columns in a SQLite database using a BERT model.
+    
+    This function processes each table in the specified database, extracts string columns,
+    and creates embeddings for their unique values using the provided BERT model.
+    The embeddings are stored in a dictionary with table.column as keys.
+    
+    Args:
+        db (str): Name of the database to process
+        DB_dir (str): Directory path containing the database file
+        DB_emb (dict): Dictionary to store the generated embeddings
+        col_values (dict): Dictionary to store the original string values
+        bert_model (SentenceTransformer): BERT model for generating embeddings
+        exclude_int (bool, optional): Whether to exclude numeric columns. Defaults to True.
+    
+    Note:
+        - Only processes string columns (excludes numeric columns)
+        - Skips the sqlite_sequence table
+        - Stores embeddings with table.column as the key
+        - Values are stored in col_values with the same keys
+    """
     conn = sqlite3.connect(os.path.join(DB_dir, db, db + '.sqlite'))
     conn.text_factory = lambda x: str(x, 'utf-8', 'ignore')
     sql = "SELECT name FROM sqlite_master WHERE type='table';"
@@ -47,10 +66,10 @@ def make_emb(db, DB_dir, DB_emb,col_values,bert_model,exclude_int=True):
         values = pd.read_sql_query(sql_t, conn)
         values = values.select_dtypes(exclude=[np.number])
         for col in tqdm.tqdm(values.columns):
-            col_vals = filter_column(values, col, exclude_int)###做索引的值：str
+            col_vals = filter_column(values, col, exclude_int)  # Values to be indexed: str
             if len(col_vals) == 0:
                 continue
-            train_embeddings = bert_model.encode(col_vals,device=device)##对值和embedding做相互索引
+            train_embeddings = bert_model.encode(col_vals, device=device)  # Create mutual index between values and embeddings
             DB_emb[table + "." + col] = train_embeddings
             col_values[table + "." + col] = col_vals
 
@@ -72,10 +91,10 @@ def load_emb(dbname, emb_dir="Bird/emb"):
     return data, col_vs
 
 def make_emb_all(data_dir, database, bertmodel):
-    emb_dir=os.path.join(data_dir,"emb")
+    emb_dir = os.path.join(data_dir,"emb")
     os.makedirs(emb_dir, exist_ok=True)
-    database=os.path.join(data_dir,database)
-    data_dir=os.path.join(data_dir,"data_preprocess","dev.json")
+    database = os.path.join(data_dir,database)
+    data_dir = os.path.join(data_dir, "data_preprocess", "dev.json")
     # init model
     bert_model = SentenceTransformer(bertmodel, device=device, cache_folder='model/')
     
@@ -87,17 +106,15 @@ def make_emb_all(data_dir, database, bertmodel):
     col_values = {}
     
     for i, (id, q) in enumerate(tqdm.tqdm(Q.iterrows())):
-        db = q['db_id']
+        db = q['db_name']
         if db not in Db_names:
             logging.info(f"Processing database: {db}") 
             col_values = {}
             DB_emb = {}
-            make_emb(db, DB_dir, DB_emb, col_values,bert_model)
+            make_emb(db, DB_dir, DB_emb, col_values, bert_model)
             save_emb(DB_emb, db, emb_dir)
             save_emb(col_values, db + '_value', emb_dir)
             Db_names.add(db)
-
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate embeddings for the specified database.")
@@ -107,4 +124,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     logging.info(f"Start make_emb_for_dev,the output_file is {args.db_root_directory}/emb")
-    make_emb_all(args.db_root_directory,args.dev_database,args.bert_model)
+    make_emb_all(args.db_root_directory, args.dev_database, args.bert_model)

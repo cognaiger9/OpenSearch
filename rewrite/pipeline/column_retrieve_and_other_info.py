@@ -1,8 +1,5 @@
-import logging,re,json
+import re, json
 from typing import Any, Dict
-from pathlib import Path
-from pipeline.utils import node_decorator,get_last_node_result
-from pipeline.pipeline_manager import PipelineManager
 from runner.database_manager import DatabaseManager
 from sentence_transformers import SentenceTransformer
 from llm.model import model_chose
@@ -13,23 +10,18 @@ from database_process.make_emb import load_emb
 from runner.column_retrieve import ColumnRetriever
 from runner.column_update import ColumnUpdater
 
-@node_decorator(check_schema_status=False)
-def column_retrieve_and_other_info(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any]:
-    config,node_name=PipelineManager().get_model_para()
-    paths=DatabaseManager()
-    emb_dir=paths.emb_dir
-    tables_info_dir=paths.db_tables
-    chat_model = model_chose(node_name,config["engine"])
-    bert_model = SentenceTransformer(config["bert_model"], device=config["device"])
+def column_retrieve_and_other_info(task: Any, db_info: Dict[str, Any], query_noun: Dict[str, Any], bert_model: SentenceTransformer) -> Dict[str, Any]:
+    print("In stage: column_retrieve_and_other_info")
+    db_manager = DatabaseManager()
+    emb_dir = db_manager.emb_dir
+    tables_info_dir = db_manager.db_tables
+    chat_model = model_chose("deepseek")
 
-    all_db_col = get_last_node_result(execution_history, "generate_db_schema")["db_col_dic"]#返回最后面等于 参数名的结果
-    origin_col = get_last_node_result(execution_history, "extract_query_noun")["col"]
-    values = get_last_node_result(execution_history, "extract_query_noun")["values"]
+    all_db_col = db_info["db_col_dic"]
+    origin_col = query_noun["col"]
+    values = query_noun["values"]
 
-    # hint = task.evidence
-    # if hint == "":
-    #     hint = "None"
-    db=task.db_id
+    db = task.db_id
 
     emb_values_dic = {}
     if emb_values_dic.get(db):
@@ -41,25 +33,25 @@ def column_retrieve_and_other_info(task: Any, execution_history: Dict[str, Any])
     db_col = {x: all_db_col[x][0] for x in all_db_col }  ## db string
     db_keys_col=all_db_col.keys()
 
-    col_retrieve = ColumnRetriever(bert_model,tables_info_dir).get_col_retrieve(task.question, db,db_keys_col)
+    col_retrieve = ColumnRetriever(bert_model, tables_info_dir).get_col_retrieve(task.question, db,db_keys_col)
 
     foreign_keys, foreign_set = find_foreign_keys_MYSQL_like(tables_info_dir, db)      
-    cols=ColumnUpdater(db_col).col_pre_update(origin_col,col_retrieve,foreign_set)
-
+    cols = ColumnUpdater(db_col).col_pre_update(origin_col, col_retrieve, foreign_set)
+    
     des = DES_new(bert_model, DB_emb, col_values)   
-
+    
     cols_select, L_values = des.get_key_col_des(cols,
                                     values,
                                     debug=False,
-                                    topk=config['top_k'],
+                                    topk=10,
                                     shold=0.65)
 
-    column=ColumnUpdater(db_col).col_suffix(cols_select)
+    column = ColumnUpdater(db_col).col_suffix(cols_select)
     # values = [f"{x[0]}: '{x[1]}'" for x in L_values]
     count=0
     while count<3:
         try:
-            q_order=query_order(task.raw_question,chat_model,db_check_prompts().select_prompt,temperature=config['temperature'])
+            q_order = query_order(task.raw_question, chat_model, db_check_prompts().select_prompt, temperature=0)
             break
         except:
             count+=1
@@ -70,12 +62,13 @@ def column_retrieve_and_other_info(task: Any, execution_history: Dict[str, Any])
     response = {
         # "col_retrieve":list(col_retrieve),
         # "col_select":list(cols_select),
-        "L_values":L_values,
-        "column":column,
-        "foreign_keys":foreign_keys,
-        "foreign_set":foreign_set,
-        "q_order":q_order
+        "L_values" : L_values,
+        "column" : column,
+        "foreign_keys" : foreign_keys,
+        "foreign_set" : foreign_set,
+        "q_order" : q_order
     }
+    #print(response)
 
     return response
 

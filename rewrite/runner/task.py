@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Any, Dict,List
+from typing import Optional, Any, Dict, List
 
 @dataclass
 class Task:
@@ -22,7 +22,7 @@ class Task:
     difficulty: Optional[str] = field(init=False, default=None)
     raw_question: str = field(init=False)
     question_toks: List[str] = field(default_factory=list)
-    query:str = field(init=False)
+    query: str = field(init=False)
 
     def __init__(self, task_data: Dict[str, Any]):
         """
@@ -31,21 +31,14 @@ class Task:
         Args:
             task_data (Dict[str, Any]): A dictionary containing task data.
         """
-        self.question_id = task_data["question_id"]
-        self.db_id = task_data["db_id"]
-## replace
-        # self.question = task_data["question"]
-        # self.evidence = task_data["evidence"]
+        self.question_id = task_data["q_id"]
+        self.db_id = task_data["db_name"]
     
-        self.SQL = task_data.get("SQL")
-        self.difficulty = task_data.get("difficulty")
-##
-        # self.raw_question=task_data["raw_question"]
-##
-        self.raw_question=task_data["question"]
-        self.evidence=task_data["evidence"]
-        self.question=(self.raw_question+" "+self.evidence).strip()
-        if self.evidence=="":
-            self.evidence="None"#问题1
-        # self.question_toks=task_data["question_toks"]
-        # self.query=task_data["query"]
+        self.SQL = task_data.get("sql_query")
+        self.difficulty = "normal"
+        
+        self.raw_question = task_data["raw_question"]
+        self.evidence = task_data["evidence"]
+        self.question = (self.raw_question + " " + self.evidence).strip()
+        if self.evidence == "":
+            self.evidence = "None"

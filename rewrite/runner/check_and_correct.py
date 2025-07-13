@@ -1,7 +1,7 @@
-import os, sqlite3, re, json
+import sqlite3, re, json
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor, TimeoutError
-import random, time
+import time
 from func_timeout import func_timeout, FunctionTimedOut
 
 
@@ -23,13 +23,15 @@ def sql_raw_parse(sql, return_question):
 
 def get_sql(chat_model,
             prompt,
-            temp=1.0,
+            temp=0,
             return_question=False,
             top_p=None,
             n=1,
             single=True):
-    sql = chat_model.get_ans(prompt, temp, top_p=top_p, n=n, single=single)
-    # print(sql)
+    sql = chat_model.get_ans(prompt, temp)
+    print(sql)
+    print(single)
+    return sql_raw_parse(sql, return_question)
     if single:
         return sql_raw_parse(sql, return_question)
     else:

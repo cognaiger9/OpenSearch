@@ -1,4 +1,4 @@
-import re, json
+import re
 from sklearn.metrics.pairwise import euclidean_distances
 import numpy as np
 
@@ -91,7 +91,7 @@ class DES_new(DES):
         value_cols = []
         for value in values:
             value = value.strip(" '\"")
-            if len(value) == 0 or re.fullmatch("\d+\.?\d*", value):
+            if len(value) == 0 or re.fullmatch(r"\d+\.?\d*", value):
                 continue
             self.get_key_col_des_single(value, topk, debug, des, value_cols,
                                         shold, match_filter)
@@ -114,7 +114,7 @@ class DES_new(DES):
         #     value = value.strip(" '\"")
 
             if len(value) < 3 or re.fullmatch(
-                    "\d+\.?\d*",
+                    r"\d+\.?\d*",
                     value) or value in values or value.lower() in self.jump_l:
                 continue
             self.get_key_col_des_single(value,
@@ -163,7 +163,7 @@ class DES_new(DES):
         for match in col_key_inst:
             tab, col = match[2].split('.')
             if tab == "sqlite_sequence" or re.fullmatch(
-                    "\d+\.?\d*",
+                    r"\d+\.?\d*",
                     match[3]) or abs(val_len - len(match[3])) > tag:
                 continue
             if (same == match[0] or match[3].lower() == value.lower()
@@ -189,29 +189,29 @@ class DES_new(DES):
 
 
 def quote_field(field_name):
-    # 正则表达式判断字段名是否包含空格或特殊字符
+    # Check if field name contains spaces or special characters using regex
     if re.search(r'\W', field_name):
-        # 如果匹配到，给字段名添加反引号
+        # If matched, add backticks around the field name
         return f"`{field_name}`"
     else:
-        # 否则，不做改变
+        # Otherwise, return as is
         return field_name
 
 
 def col_update(cols_tmp, db_col):
     col_table = {}
-    for x in db_col:  #db_col: table.`column`  同名歧义字段导入
+    for x in db_col:  # db_col: table.`column`  Import ambiguous fields with same name
         table, col = x.split('.')
         col_table.setdefault(col, [])
         col_table[col].append(table)
-    cols = []  ## table.`column` 所有column格式统一
+    cols = []  # Format all columns as table.`column`
     for c in cols_tmp:  ##
         try:
             table, col_name = c.split('.')
             col_name = col_name.replace('`', '')
             col_name = quote_field(col_name)
             for t in col_table[col_name]:
-                cols.append(f"{t}.{col_name}")  # 都变成 table.`xxx`
+                cols.append(f"{t}.{col_name}")  # Convert all to table.`xxx` format
         except:
             pass
 

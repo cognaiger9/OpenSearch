@@ -1,20 +1,14 @@
-import logging
 from typing import Any, Dict
-from pathlib import Path
-from pipeline.utils import node_decorator,get_last_node_result
-from pipeline.pipeline_manager import PipelineManager
 from runner.database_manager import DatabaseManager
 from llm.model import model_chose
 import json
 from llm.prompts import *
 
 
-@node_decorator(check_schema_status=False)
-def extract_col_value(task: Any, execution_history: Dict[str, Any]) -> Dict[str, Any]:
-    config,node_name=PipelineManager().get_model_para()
-    paths=DatabaseManager()
-    fewshot_path=paths.db_fewshot_path
-    chat_model = model_chose(node_name,config["engine"])
+def extract_col_value(task: Any, db_info: Dict[str, Any]) -> Dict[str, Any]:
+    db_manager = DatabaseManager()
+    fewshot_path = db_manager.db_fewshot_path
+    chat_model = model_chose("deepseek")
 
     with open(fewshot_path) as f:## fewshot
         df_fewshot = json.load(f)
@@ -24,19 +18,19 @@ def extract_col_value(task: Any, execution_history: Dict[str, Any]) -> Dict[str,
         hint = "None"
     
 
-    all_info = get_last_node_result(execution_history, "generate_db_schema")["db_list"]
     key_col_des_raw = get_des_ans(chat_model,
                                 db_check_prompts().extract_prompt,
                                 df_fewshot["extract"][task.question_id]['prompt'],
-                                all_info,
+                                db_info,
                                 task.question,
                                 hint,
                                 False,
-                                temperature=config["temperature"])
+                                temperature=0)
 
     response = {
         "key_col_des_raw": key_col_des_raw
     }
+    #print(response)
     return response
 
 def get_des_ans(chat_model,
@@ -46,7 +40,7 @@ def get_des_ans(chat_model,
                 question,
                 hint,
                 debug,
-                temperature=1.0):
+                temperature=0):
     fewshot = fewshot.split("/* Answer the following:")[1:6]
     fewshot = "/* Answer the following:" + "/* Answer the following:".join(
         fewshot)
@@ -54,6 +48,7 @@ def get_des_ans(chat_model,
                                    db_info=db,
                                    query=question,
                                    hint=hint)
+    #print(ext_prompt)
 
     if debug:
         print(ext_prompt)

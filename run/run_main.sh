@@ -1,11 +1,11 @@
 # Define variables
 data_mode='dev' # Options: 'dev', 'train' 
-db_root_path=Bird #root directory # UPDATE THIS WITH THE PATH TO THE TARGET DATASET
-start=0 #闭区间
-end=1  #开区间
-pipeline_nodes='generate_db_schema+extract_col_value+extract_query_noun+column_retrieve_and_other_info+candidate_generate+align_correct+vote+evaluation'
-# pipeline_nodes='column_retrieve_and_other_info'
-# pipeline指当前工作流的节点组合
+db_root_path=BULL #root directory # UPDATE THIS WITH THE PATH TO THE TARGET DATASET
+start=0 #inclusive
+end=1  #exclusive
+#pipeline_nodes='generate_db_schema+extract_col_value+extract_query_noun+column_retrieve_and_other_info+candidate_generate+align_correct+vote+evaluation'
+pipeline_nodes='generate_db_schema+extract_col_value+extract_query_noun+column_retrieve_and_other_info+candidate_generate+evaluation'
+# pipeline refers to the current workflow node combination
 # checkpoint_nodes='generate_db_schema,extract_col_value,extract_query_noun'
 # checkpoint_dir="./results/dev/generate_db_schema+extract_col_value+extract_query_noun+column_retrieve_and_other_info+candidate_generate+align_correct+vote+evaluation/Bird/2024-09-12-01-48-10"
 
@@ -20,60 +20,54 @@ pipeline_nodes='generate_db_schema+extract_col_value+extract_query_noun+column_r
     # evaluation
 
 AK='your_ak' #set your ak in src/llm/model.py
-engine1='gpt-4o-0513'
-engine2='gpt-3.5-turbo-0125'
-engine3='gpt-4-turbo'
-engine4='claude-3-opus-20240229'
-engine5='gemini-1.5-pro-latest'
+engine1='deepseek'
 engine6='finetuned_nl2sql'
-engine7='meta-llama/Meta-Llama-3-70B-Instruct'
 engine8='finetuned_colsel'
 engine9='finetuned_col_filter'
-engine10='gpt-3.5-turbo-instruct'
 
-## n默认21 
+## n defaults to 21
 #align_methods:style_align+function_align+agent_align
-#暂时没有找到好的注释方式
+#temporarily no good way to comment
 # pipeline_setup='{
-#     "generate_db_schema": {                 #生成db_schema的环节
-#         "engine": "'${engine1}'",            #生成 db_schema的大模型选择                 
-#         "bert_model": "/app/sentence-transformers/all-mpnet-base-v2/",  #bert_model模型选择
-#         "device":"cpu"                                                  #bert_model加载方式，目前该机器只支持cpu
+#     "generate_db_schema": {                 #step to generate db_schema
+#         "engine": "'${engine1}'",            #large model selection for generating db_schema                 
+#         "bert_model": "/app/sentence-transformers/all-mpnet-base-v2/",  #bert_model selection
+#         "device":"cpu"                                                  #bert_model loading method, currently this machine only supports cpu
 #     },
-#     "extract_col_value": {                    #get_des_ans得到key_col_des_raw
-#         "engine": "'${engine1}'",             #大模型
-#         "temperature":0.0                     #大模型的生成参数选择
+#     "extract_col_value": {                    #get_des_ans gets key_col_des_raw
+#         "engine": "'${engine1}'",             #large model
+#         "temperature":0.0                     #large model generation parameter selection
 #     },
-#     "extract_query_noun": {                   #parse_des得到col和value
-#         "engine": "'${engine1}'",             #parse_des使用的大模型
-#         "temperature":0.0                     #大模型的生成参数选择
+#     "extract_query_noun": {                   #parse_des gets col and value
+#         "engine": "'${engine1}'",             #large model used for parse_des
+#         "temperature":0.0                     #large model generation parameter selection
 #     },
-#     "column_retrieve_and_other_info": {      #得到一些列描述和列等相关信息+query_order
-#         "engine": "'${engine1}'",             #query_order用的大模型
-#         "bert_model": "/app/bge",        # bert_model模型选择
-#         "device":"cpu",                          #bert_model加载方式，目前该机器只支持cpu
-#         "temperature":0.3,                        #query_order使用大模型的生成参数
-#         "top_k":10                                #get_key_col_des里面的top_k
+#     "column_retrieve_and_other_info": {      #gets column descriptions and related information + query_order
+#         "engine": "'${engine1}'",             #large model used for query_order
+#         "bert_model": "/app/bge",        # bert_model selection
+#         "device":"cpu",                          #bert_model loading method, currently this machine only supports cpu
+#         "temperature":0.3,                        #generation parameters for query_order using large model
+#         "top_k":10                                #top_k in get_key_col_des
 #     },
-#     "candidate_generate":{                    #生成候选sql
-#         "engine": "'${engine1}'",             #大模型
-#         "temperature": 0.7,                   #大模型的参数
-#         "n":21,                               #n，同align环节n一致
-#         "return_question":"True",             #get_sql里的参数
-#         "single":"False"                      #get_sql里的参数，n=1时和n！=1处理方式有差异
+#     "candidate_generate":{                    #generate candidate sql
+#         "engine": "'${engine1}'",             #large model
+#         "temperature": 0.7,                   #large model parameters
+#         "n":21,                               #n, consistent with align step n
+#         "return_question":"True",             #parameter in get_sql
+#         "single":"False"                      #parameter in get_sql, different handling for n=1 and n!=1
 #     },
 #     "align_correct":{
-#         "engine": "'${engine1}'",             #对齐和纠错
-#         "n":21,                                  #多线程的数量
+#         "engine": "'${engine1}'",             #alignment and correction
+#         "n":21,                                  #number of threads
 #         "bert_model": "/app/bge",            
-#         "device":"cpu",                           #bert_model 加载方式
-#         "align_methods":"style_align+function_align+agent_align"   #对齐方式，以+号分割
+#         "device":"cpu",                           #bert_model loading method
+#         "align_methods":"style_align+function_align+agent_align"   #alignment methods, separated by +
 #     }
 # }'  
 pipeline_setup='{
     "generate_db_schema": {
         "engine": "'${engine1}'",
-        "bert_model": "your_bert_model_path",  
+        "bert_model": "all-MiniLM-L6-v2",  
         "device":"cpu"
     },
     "extract_col_value": {
@@ -86,7 +80,7 @@ pipeline_setup='{
     },
     "column_retrieve_and_other_info": {
         "engine": "'${engine1}'",
-        "bert_model": "your_bert_model_path",  
+        "bert_model": "all-MiniLM-L6-v2",  
         "device":"cpu",
         "temperature":0.3,
         "top_k":10
@@ -101,7 +95,7 @@ pipeline_setup='{
     "align_correct":{
         "engine": "'${engine1}'",
         "n":21,
-        "bert_model": "your_bert_model_path:e.g. /opensearch-sql/bge",  
+        "bert_model": "all-MiniLM-L6-v2",  
         "device":"cpu",
         "align_methods":"style_align+function_align+agent_align"
     }

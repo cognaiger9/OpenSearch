@@ -1,7 +1,6 @@
 import pandas as pd
 import re, sqlite3, os, chardet
 
-
 def find_foreign_keys_MYSQL_like(DATASET_JSON, db_name):
     schema_df = pd.read_json(DATASET_JSON)
     schema_df = schema_df.drop(['column_names', 'table_names'], axis=1)
@@ -43,12 +42,12 @@ def find_foreign_keys_MYSQL_like(DATASET_JSON, db_name):
 
 
 def quote_field(field_name):
-    # 正则表达式判断字段名是否包含空格或特殊字符
+    # Regular expression to check if field name contains spaces or special characters
     if re.search(r'\W', field_name):
-        # 如果匹配到，给字段名添加反引号
+        # If matched, add backticks to the field name
         return f"`{field_name}`"
     else:
-        # 否则，不做改变
+        # Otherwise, leave unchanged
         return field_name
 
 
@@ -57,19 +56,44 @@ class db_agent:
     def __init__(self, chat_model) -> None:
         self.chat_model = chat_model
 
-    def get_allinfo(self,db_json_dir, db,sqllite_dir,db_dir,tables_info_dir, model):
-        db_info, db_col = self.get_db_des(sqllite_dir,db_dir,model)
+    def get_allinfo(self, db, sqllite_dir, db_dir, tables_info_dir, model):
+        """
+        Retrieves and compiles comprehensive database information including schema, foreign keys, and analysis.
+
+        Args:
+            db (str): Name of the database
+            sqllite_dir (str): Directory path containing SQLite database files
+            db_dir (str): Directory path containing database schema information
+            tables_info_dir (str): Directory path containing table information including foreign keys
+            model: The language model instance used for database analysis
+
+        Returns:
+            tuple: A tuple containing:
+                - all_info (str): Complete database information including schema, foreign keys, and table descriptions
+                - db_col (dict): Database columns information
+        """
+
+        # Get database description (SQL code)
+        db_info, db_col = self.get_db_des(sqllite_dir, db_dir, model)
+        
+        # Find foreign key relationships in the database
         foreign_keys = find_foreign_keys_MYSQL_like(tables_info_dir, db)[0]
+        
+        # Compile initial database information including system type, name, schema, and foreign keys
         all_info = f"Database Management System: SQLite\n#Database name: {db}\n{db_info}\n#Forigen keys:\n{foreign_keys}\n"
+        
+        # Get additional database analysis using the language model
         prompt = self.db_conclusion(all_info)
         db_all = self.chat_model.get_ans(prompt)
+        
+        # Combine all information into final output
         all_info = f"{all_info}\n{db_all}\n"
 
         return all_info, db_col
 
     def get_complete_table_info(self, conn, table_name, table_df):
         cursor = conn.cursor()
-        # 获取列的基本信息
+        # Get basic column information
         cursor.execute(f"PRAGMA table_info(`{table_name}`)")
         columns_info = cursor.fetchall()
         df = pd.read_sql_query(f"SELECT * FROM `{table_name}`", conn)
@@ -102,7 +126,7 @@ class db_agent:
             except Exception as e:
                 print(e)
                 dic[col] = "", ""
-        # 获取外键信息
+        # Get foreign key information
         row = list(
             cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 1").fetchall()
             [0])
@@ -120,7 +144,7 @@ class db_agent:
                 row[i] = val_p
             except:
                 pass
-        # 构建schema表示
+        # Build schema representation
         schema_str = f"## Table {table_name}:\nColumn| Column Description| Value Description| Type| 3 Example Value\n"
         columns = {}
         for column, val in zip(columns_info, row):
@@ -137,7 +161,7 @@ class db_agent:
             # schema_str += f"{include_null}| "
             unique = f"{'Non-Unique' if contains_duplicates[tmp_col] else 'Unique'}"
             # schema_str += f"{unique}| "
-            if len(str(val)) > 360:  ## ddl展示 索引正常
+            if len(str(val)) > 360:  ## For DDL display, index is normal
                 val = "<Long text not displayed>"
             columns[f"{table_name}.{column_name}"] = (col_des, val_des,
                                                       column_type,
@@ -146,14 +170,37 @@ class db_agent:
             schema_str += f"{val}\n"
         return schema_str, columns
 
-    def get_db_des(self,sqllite_dir,db_dir,model):
+    def get_db_des(self, sqllite_dir, db_dir,model):
+        """
+        Retrieves and compiles detailed database schema information including table structures, column descriptions, and sample values.
+
+        This function performs the following key operations:
+        1. Connects to a SQLite database and retrieves all table names
+        2. For each table:
+           - Matches table names with corresponding CSV description files using semantic similarity
+           - Reads table descriptions from CSV files with automatic encoding detection
+           - Extracts detailed column information including types, nullability, and uniqueness
+           - Collects sample values and column descriptions
+        3. Compiles all table information into a comprehensive database schema description
+
+        Args:
+            sqllite_dir (str): Path to the SQLite database file
+            db_dir (str): Directory containing database description files
+            model: Embedding model used for semantic matching of table names with description files
+
+        Returns:
+            tuple: A tuple containing:
+                - db_info (str): Complete database schema information in formatted text
+                - db_col (dict): Dictionary mapping column names to their detailed information
+        """
         conn = sqlite3.connect(sqllite_dir)
-        table_dir = os.path.join(db_dir, 'database_description')
         sql = "SELECT name FROM sqlite_master WHERE type='table';"
         cursor = conn.cursor()
         tables = cursor.execute(sql).fetchall()
         db_info = []
         db_col = dict()
+
+        table_dir = os.path.join(db_dir, 'database_description')
         file_list = os.listdir(table_dir)
         files_emb = model.encode(file_list, show_progress_bar=False)
         for table in tables:
@@ -185,31 +232,30 @@ class db_agent:
 
     def db_conclusion(self, db_info):
         prompt = f"""/* Here is a examples about describe database */
-    #Forigen keys: 
-    Airlines.ORIGIN = Airports.Code, Airlines.DEST = Airports.Code, Airlines.OP_CARRIER_AIRLINE_ID = Air Carriers.Code
-    #Database Description: The database encompasses information related to flights, including airlines, airports, and flight operations.
-    #Tables Descriptions:
-    Air Carriers: Codes and descriptive information about airlines
-    Airports: IATA codes and descriptions of airports
-    Airlines: Detailed information about flights 
+        #Forigen keys: 
+        Airlines.ORIGIN = Airports.Code, Airlines.DEST = Airports.Code, Airlines.OP_CARRIER_AIRLINE_ID = Air Carriers.Code
+        #Database Description: The database encompasses information related to flights, including airlines, airports, and flight operations.
+        #Tables Descriptions:
+        Air Carriers: Codes and descriptive information about airlines
+        Airports: IATA codes and descriptions of airports
+        Airlines: Detailed information about flights 
 
-    /* Here is a examples about describe database */
-    #Forigen keys:
-    data.ID = price.ID, production.ID = price.ID, production.ID = data.ID, production.country = country.origin
-    #Database Description: The database contains information related to cars, including country, price, specifications, Production
-    #Tables Descriptions:
-    Country: Names of the countries where the cars originate from.
-    Price: Price of the car in USD.
-    Data: Information about the car's specifications
-    Production: Information about car's production.
+        /* Here is a examples about describe database */
+        #Forigen keys:
+        data.ID = price.ID, production.ID = price.ID, production.ID = data.ID, production.country = country.origin
+        #Database Description: The database contains information related to cars, including country, price, specifications, Production
+        #Tables Descriptions:
+        Country: Names of the countries where the cars originate from.
+        Price: Price of the car in USD.
+        Data: Information about the car's specifications
+        Production: Information about car's production.
 
-    /* Describe the following database */
-    {db_info}
-    Please conclude the database in the following format:
-    #Database Description:
-    #Tables Descriptions:
-    """
-        # print(prompt)
+        /* Describe the following database */
+        {db_info}
+        Please conclude the database in the following format:
+        #Database Description:
+        #Tables Descriptions:
+        """
 
         return prompt
 
@@ -221,43 +267,29 @@ class db_agent_string(db_agent):
 
     def get_complete_table_info(self, conn, table_name, table_df):
         cursor = conn.cursor()
-        # 获取列的基本信息
+
+        # Get basic column information
         cursor.execute(f"PRAGMA table_info(`{table_name}`)")
         columns_info = cursor.fetchall()
         df = pd.read_sql_query(f"SELECT * FROM `{table_name}`", conn)
-        contains_null = {
-            column: df[column].isnull().any()
-            for column in df.columns
-        }
-        contains_duplicates = {
-            column: df[column].duplicated().any()
-            for column in df.columns
-        }
+
         dic = {}
         for _, row in table_df.iterrows():
             try:
-                col_description, val_description = "", ""
+                col_description = ""
                 col = row.iloc[0].strip()
                 if pd.notna(row.iloc[2]):
                     col_description = re.sub(r'\s+', ' ', str(row.iloc[2]))
                 if col_description.strip() == col or col_description.strip(
                 ) == "":
                     col_description = ''
-                if pd.notna(row.iloc[4]):
-                    val_description = re.sub(r'\s+', ' ', str(row.iloc[4]))
-                if val_description.strip() == "" or val_description.strip(
-                ) == col or val_description == col_description:
-                    val_description = ""
                 col_description = col_description[:200]
-                val_description = val_description[:200]
-                dic[col] = col_description, val_description
+                dic[col] = col_description
             except Exception as e:
                 print(e)
-                dic[col] = "", ""
-        # 获取外键信息
-        row = list(
-            cursor.execute(f"SELECT * FROM `{table_name}` LIMIT 1").fetchall()
-            [0])
+                dic[col] = ""
+        # Get foreign key information
+
         for i, col in enumerate(df.columns):
             try:
                 df_tmp=df[col].dropna().drop_duplicates()
@@ -273,51 +305,28 @@ class db_agent_string(db_agent):
                         val_p.append(val)
                 if len(vals) == 0:
                     raise ValueError
-                row[i] = val_p
             except:
                 pass
-        # 构建schema表示
+
+        # Build schema representation
         schema_str = f"## Table {table_name}:\n"
         columns = {}
-        for column, val in zip(columns_info, row):
+        for column in columns_info:
             schema_str_single = ""
-            column_name, column_type, not_null, default_value, pk = column[1:6]
+            column_name, column_type = column[1:3]
             tmp_col = column_name.strip()
             column_name = quote_field(column_name)
 
             # schema_str_single += f"{column_name}: "
-            col_des, val_des = dic.get(tmp_col, ["", ""])
+            col_des = dic.get(tmp_col, "")
             if col_des != "":
                 schema_str_single += f" The column is {col_des}. "
-            if val_des != "":
-                schema_str_single += f" The values' format are {val_des}. "
 
             schema_str_single += f"The type is {column_type}, "
-            if contains_null[tmp_col]:
-                schema_str_single += f"Which inlude Null"
-            else:
-                schema_str_single += f"Which does not inlude Null"
 
-            if contains_duplicates[tmp_col]:
-                schema_str_single += " and is Non-Unique. "
-            else:
-                schema_str_single += " and is Unique. "
-
-            include_null = f"{'Include Null' if contains_null[tmp_col] else 'Non-Null'}"
-            # schema_str_single += f"{include_null}| "
-            unique = f"{'Non-Unique' if contains_duplicates[tmp_col] else 'Unique'}"
-            # schema_str_single += f"{unique}| "
-            if len(str(val)) > 360:  ## ddl展示 索引正常
-                val="<Long text>"
-                schema_str_single+= f"Values format: <Long text>"
-            elif  type(val) is not list or len(val)<3 :
-                schema_str_single+= f"Value of this column must in: {val}"
-            else:
-                schema_str_single += f"Values format like: {val}"
             schema_str += f"{column_name}: {schema_str_single}\n"
             columns[f"{table_name}.{column_name}"] = (schema_str_single,
-                                                      col_des, val_des,
-                                                      column_type,
-                                                      include_null, unique,
-                                                      str(val))
+                                                      col_des,
+                                                      column_type)
         return schema_str, columns
+    

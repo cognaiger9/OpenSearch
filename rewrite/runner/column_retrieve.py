@@ -45,21 +45,37 @@ class ColumnRetriever:
     def get_tab_col_dic(self,table_list):
         tab_dic = {}
         for x in table_list:
-            t, col = x.split(".")
-            col = col.strip('`')
-            tab_dic.setdefault(col, set())
-            tab_dic[col].add(x)
-
+            try:
+                t, col = x.split(".")
+                col = col.strip('`')
+                tab_dic.setdefault(col, set())
+                tab_dic[col].add(x)
+            except ValueError:
+                # Skip invalid table.column format
+                continue
         return tab_dic
     
     def col_ret(self,l,ext_a):
+        if not l or not ext_a:
+            return set()
+            
         l_emb = self.bert_model.encode(l,
                                 convert_to_tensor=True,
                                 show_progress_bar=False)
         num_pick = min(4, len(l))
         m_ans = self.bert_model.encode(
-            ext_a, convert_to_tensor=True, show_progress_bar=False) @ l_emb.T
-        all_col = self.same_pick(l,m_ans,num_pick)
+            ext_a, convert_to_tensor=True, show_progress_bar=False)
+            
+        # Ensure proper dimensions for matrix multiplication
+        if m_ans.dim() == 1:
+            m_ans = m_ans.unsqueeze(0)
+        if l_emb.dim() == 1:
+            l_emb = l_emb.unsqueeze(0)
+            
+        # Use mT instead of T for proper matrix transposition
+        m_ans = m_ans @ l_emb.mT
+        
+        all_col = self.same_pick(l, m_ans, num_pick)
         return all_col
 
     def col_name_dic(self,df,db):
@@ -69,24 +85,33 @@ class ColumnRetriever:
     def get_col_set(self,all_col,re_col,col_name_d,table_dic,reflect=False):
         ans = set()
         if reflect:
-
             for x in all_col:
                 if x.find(" ")!= -1:
                     x=f"`{x}`"
                 ans.add(x)
             for x in re_col:
-                tmp=col_name_d[x]
-                if tmp.find(" ")!=-1:
-                    tmp=f"`{tmp}`"
-                ans.add(tmp)
+                try:
+                    tmp=col_name_d[x]
+                    if tmp.find(" ")!=-1:
+                        tmp=f"`{tmp}`"
+                    ans.add(tmp)
+                except KeyError:
+                    # Skip if column name not found
+                    continue
             return ans
+            
         for x in all_col:
-            ans = ans.union(table_dic[x])
+            if x in table_dic:
+                ans = ans.union(table_dic[x])
         
         for x in re_col:
-            real_name=col_name_d[x]
-            if real_name not in all_col:
-                ans = ans.union(table_dic[real_name])
+            try:
+                real_name=col_name_d[x]
+                if real_name not in all_col and real_name in table_dic:
+                    ans = ans.union(table_dic[real_name])
+            except KeyError:
+                # Skip if column name not found
+                continue
         return ans
 
     def same_pick(self,l,m_ans,num_pick,shold=0.7):

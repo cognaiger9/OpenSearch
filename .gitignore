@@ -1,1 +1,7 @@
 **/__pycache__/
+.DS_Store
+BULL/
+Bird/
+.env
+model/
+opensearch/

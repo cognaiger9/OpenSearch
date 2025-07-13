@@ -1,7 +1,4 @@
-import logging
 from typing import Any, Dict, List
-from pipeline.utils import node_decorator,get_last_node_result
-from pipeline.pipeline_manager import PipelineManager
 from runner.database_manager import DatabaseManager
 from pipeline.utils import make_newprompt
 from llm.model import model_chose
@@ -10,20 +7,20 @@ import json
 from llm.prompts import *
 from runner.check_and_correct import get_sql
 
-@node_decorator(check_schema_status=False)
-def candidate_generate(task: Any, execution_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-    config,node_name=PipelineManager().get_model_para()
-    paths=DatabaseManager()
-    fewshot_path=paths.db_fewshot_path
+def candidate_generate(task: Any, column_retrive_info: Dict[str, Any]) -> Dict[str, Any]:
+    print("In stage: candidate_generate")
+    db_manager = DatabaseManager()
+    fewshot_path = db_manager.db_fewshot_path
+    print("fewshot_path", fewshot_path)
 
     with open(fewshot_path) as f:## fewshot
         df_fewshot = json.load(f)
 
-    chat_model = model_chose(node_name,config["engine"])  # deepseek qwen-max gpt qwen-max-longcontext
-    column = get_last_node_result(execution_history, "column_retrieve_and_other_info")["column"]
-    foreign_keys= get_last_node_result(execution_history, "column_retrieve_and_other_info")["foreign_keys"]
-    L_values = get_last_node_result(execution_history, "column_retrieve_and_other_info")["L_values"]
-    q_order = get_last_node_result(execution_history, "column_retrieve_and_other_info")["q_order"]
+    chat_model = model_chose("deepseek")  # deepseek qwen-max gpt qwen-max-longcontext
+    column = column_retrive_info["column"]
+    foreign_keys = column_retrive_info["foreign_keys"]
+    L_values = column_retrive_info["L_values"]
+    q_order = column_retrive_info["q_order"]
     values = [f"{x[0]}: '{x[1]}'" for x in L_values]
     db=task.db_id
 
@@ -41,17 +38,21 @@ def candidate_generate(task: Any, execution_history: List[Dict[str, Any]]) -> Di
     new_prompt = make_newprompt(db_check_prompts().new_prompt, fewshot,
                             key_col_des, new_db_info, question,
                             task.evidence,q_order)
+    
+    print("cp1")
+    
+    single = "False".lower() == 'true'  # 将字符串转换为布尔值
+    return_question="True".lower() == 'true' 
+    SQL,_ = get_sql(chat_model, new_prompt, 0, return_question=return_question, n=21, single=single)
 
-    single = config['single'].lower() == 'true'  # 将字符串转换为布尔值
-    return_question=config['return_question']== 'true' 
-    SQL,_ = get_sql(chat_model, new_prompt, config['temperature'], return_question=return_question,n=config['n'],single=single)
-
+    print("cp2")
     
     response = {
-        "rewrite_question":question,
-        "SQL": SQL
+        "rewrite_question" : question,
+        "SQL" : SQL
         # "new_prompt":new_prompt
     }
+    print(response)
 
     return response
 
